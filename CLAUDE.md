@@ -58,7 +58,10 @@ The sustainability framing is central: buildings account for ~40% of global ener
 | `ElectricityHVAC` | HVAC electricity (J) ← **primary target** |
 | `ElectricityFacility` | Total site electricity (J) |
 | `GasFacility` | Natural gas (J) |
+| `CoolingElectricity` | Cooling-only electricity (J) |
+| `HeatingElectricity` | Heating-only electricity (J) |
 | `SiteOutdoorAirDrybulbTemperature` | Outdoor air temperature (°C) |
+| `ZoneMeanAirTemperature` | Per-zone indoor air temperature (°C) |
 | `ZonePeopleOccupantCount` | Per-zone occupancy counts |
 | `InteriorLightsElectricity` | Lighting electricity (J) |
 | `InteriorEquipmentElectricity` | Plug loads / MELs (J) |
@@ -97,8 +100,8 @@ hvac_project/
 │   ├── A_Synthetic_Operation_Dataset.ipynb  ← Original AlphaBuilding demo notebook
 │   ├── AlphaBuilding_README.md              ← Original dataset README
 │   ├── 01_load_data.ipynb           ← Environment check, S3 connection, data loading ✓
-│   ├── 02_eda.ipynb                 ← Exploratory data analysis (TO BUILD)
-│   ├── 03_features.ipynb            ← Feature engineering (TO BUILD)
+│   ├── 02_eda.ipynb                 ← Exploratory data analysis ✓
+│   ├── 03_features.ipynb            ← Feature engineering (IN PROGRESS)
 │   ├── 04_ml_model.ipynb            ← ML model training & evaluation (TO BUILD)
 │   ├── 05_mpc.ipynb                 ← MPC framework (TO BUILD)
 │   └── 06_rl.ipynb                  ← RL agent & MPC comparison — OPTIONAL (TO BUILD)
@@ -131,7 +134,9 @@ Each notebook defines its own `load_simulation()` function and constants inline.
 `data_loader.py` has been removed — do not reference it.
 
 The standard DataFrame columns produced by `load_simulation()` are:
-`hvac_kwh, total_kwh, gas_kwh, lighting_kwh, plugloads_kwh, oat_c, occupancy, hour, minute, dayofweek, month, is_weekday, is_occupied, oat_roll1h, oat_roll3h, climate, efficiency, year, run`
+`hvac_kwh, total_kwh, gas_kwh, lighting_kwh, plugloads_kwh, cooling_kwh, heating_kwh, oat_c, indoor_temp_c, occupancy, hour, minute, dayofweek, month, is_weekday, is_occupied, oat_roll1h, oat_roll3h, climate, efficiency, year, run`
+
+Note: `season` is derived in notebooks via `month` mapping (Dec/Jan/Feb → Winter, etc.) and is not produced by `load_simulation()` directly.
 
 ---
 
@@ -176,8 +181,8 @@ Python version: 3.9 | Virtual environment: `venv/` in project root
   - `TMY3_1A_Standard_run_1.parquet`
   - `TMY3_3C_Standard_run_1.parquet`
   - `TMY3_5A_Standard_run_1.parquet`
-- [x] `02_eda.ipynb` — built, ready to run
-- [ ] `03_features.ipynb` — next step after EDA
+- [x] `02_eda.ipynb` — complete. 15 figures saved to `figures/`
+- [ ] `03_features.ipynb` — **current step**
 - [ ] `04_ml_model.ipynb`
 - [ ] `05_mpc.ipynb`
 - [ ] `06_rl.ipynb` — optional, if time allows
@@ -198,10 +203,19 @@ The MPC cost function minimises deviation from the 22°C setpoint regardless of 
 
 ### Parquet files saved (Standard efficiency, TMY3, run_1)
 - `TMY3_1A_Standard_run_1.parquet` — Miami
-- `TMY3_3C_Standard_run_1.parquet` — San Francisco  
+- `TMY3_3C_Standard_run_1.parquet` — San Francisco
 - `TMY3_5A_Standard_run_1.parquet` — Chicago
 
-Load efficiency comparison data separately if needed (Low/High efficiency not yet saved).
+Each file contains all columns including the newer `indoor_temp_c`, `cooling_kwh`, `heating_kwh`. Load efficiency comparison data separately if needed (Low/High efficiency not yet saved).
+
+### EDA key findings (notebook 02)
+- **OAT is the strongest predictor** of `hvac_kwh` across all 3 climate zones
+- **Miami (1A)** has the highest annual HVAC load — cooling-dominated year-round
+- **Chicago (5A)** has dual peaks: summer cooling + winter heating — confirms mixed signal
+- **San Francisco (3C)** has the lowest and flattest HVAC demand — mild marine climate
+- **Occupancy has a moderate positive correlation** with HVAC demand during occupied hours
+- **Indoor temperature** tracks close to 22°C setpoint in most conditions; largest drift occurs in Chicago winters
+- Comfort band set to **20–22°C** — to be reviewed in discussion chapter
 
 - Always use `anon=True` in `s3fs.S3FileSystem()` — the S3 bucket is public
 - Never hardcode the S3 path — use `S3_PATH` from `config.py`
