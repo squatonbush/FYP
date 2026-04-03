@@ -1,0 +1,216 @@
+# Project Context for Claude Code
+> This file gives Claude Code full context about this project.
+> It was generated from the project's Claude.ai chat session.
+
+---
+
+## Project Identity
+
+- **Title:** A Data-Driven Predictive Control Framework for HVAC Cooling Optimisation in Commercial Office Buildings
+- **Note on scope:** While the title retains "cooling optimisation", the framework naturally generalises to full HVAC control (heating + cooling). `ElectricityHVAC` captures total HVAC electricity across all seasons. The ML model is trained on this full signal with no seasonal filtering, and the MPC controller manages total HVAC output across both heating and cooling regimes. Chicago (5A) winter performance demonstrates this generalisability.
+- **Student:** Cheuk Fung Donald Man
+- **Programme:** MEng Civil Engineering, Imperial College London
+- **Supervisor:** Dr. Po-Heng Lee
+- **Module:** 4th Year Individual Research Project
+- **Submission:** 13th March 2026 (interim report done; thesis in progress)
+
+---
+
+## Project Overview
+
+A two-phase research project using the AlphaBuilding Synthetic Building Operation Dataset to:
+
+- **Phase 1** — Train a supervised ML model to predict total HVAC electricity demand (`hvac_kwh`) from outdoor air temperature (OAT), occupancy, and time features. The model is trained on the full signal — no seasonal filtering — so it learns both heating-season and cooling-season behaviour across all three climate zones.
+- **Phase 2** — Use the trained ML model as the internal predictive engine inside a Model Predictive Control (MPC) framework. The controller minimises indoor temperature deviation from setpoint (22°C) by managing total HVAC output across both heating and cooling regimes. The cost function penalises temperature variance and total HVAC energy consumption.
+
+**Key design decision:** `ElectricityHVAC` in EnergyPlus captures all HVAC electricity including fans, pumps, chillers, and electric heating components. Rather than filtering to cooling-only periods, the full signal is used for both ML training and MPC control. This produces a more honest, generalisable framework and makes Chicago's heating-dominated winters a meaningful test case rather than noise to be excluded.
+
+The sustainability framing is central: buildings account for ~40% of global energy use, HVAC is the largest single end-use, and cooling demand is rising with climate change. This project targets SDG 7 (Clean Energy) and SDG 13 (Climate Action), and aligns with the UK Net Zero Strategy.
+
+**Reinforcement Learning** is an optional extension — implement and compare against MPC only if time allows after Phase 2 is complete.
+
+---
+
+## Dataset
+
+**AlphaBuilding Synthetic Building Operation Dataset**
+- Generated via EnergyPlus / OpenStudio simulations of a U.S. DOE reference MediumOfficeDetailed building
+- Floor area: 4,982 m²  |  Standard: ASHRAE 90.1-2013
+- Publicly accessible on AWS S3 — **no credentials needed:**
+  ```
+  s3://oedi-data-lake/building_synthetic_dataset/A_Synthetic_Building_Operation_Dataset.h5
+  ```
+- Format: HDF5 — access via `h5py` + `s3fs`
+- Always use `s3fs.S3FileSystem(anon=True)` — public bucket
+
+**Dimensions:**
+| Dimension | Values |
+|-----------|--------|
+| Climate zones | 1A (Miami), 3C (San Francisco), 5A (Chicago) |
+| Efficiency levels | Low, Standard, High |
+| Weather years | 30 AMY years (1991–2020) + TMY3 reference |
+| Occupancy runs | run_1 to run_5 (stochastic) |
+| Time resolution | 10-minute intervals (52,560 rows per annual simulation) |
+
+**Key HDF5 variables:**
+| Variable name | Description |
+|---------------|-------------|
+| `ElectricityHVAC` | HVAC electricity (J) ← **primary target** |
+| `ElectricityFacility` | Total site electricity (J) |
+| `GasFacility` | Natural gas (J) |
+| `SiteOutdoorAirDrybulbTemperature` | Outdoor air temperature (°C) |
+| `ZonePeopleOccupantCount` | Per-zone occupancy counts |
+| `InteriorLightsElectricity` | Lighting electricity (J) |
+| `InteriorEquipmentElectricity` | Plug loads / MELs (J) |
+| `ZoneThermostatCoolingSetpointTemperature` | Cooling setpoints per zone (°C) |
+| `ZoneThermostatHeatingSetpointTemperature` | Heating setpoints per zone (°C) |
+
+**Unit conversion:** `J_TO_KWH = 1 / 3_600_000`
+
+---
+
+## Research Aims & Objectives
+
+**Aim:** Develop a data-driven MPC framework for HVAC energy optimisation, using ML to predict total HVAC electricity demand and minimise indoor temperature fluctuation across all seasons and climate zones.
+
+**Objectives:**
+- O1. EDA to identify key drivers of total HVAC electricity (OAT, occupancy, time, season, efficiency level) across all 3 climate zones — including analysis of heating vs cooling season behaviour
+- O2. Train & compare ML models (Random Forest, XGBoost, LSTM) on the full-year `hvac_kwh` signal with no seasonal filtering — metrics: RMSE, MAE, R²
+- O3. Design MPC using the trained ML model as the predictive engine, minimising indoor temperature deviation from 22°C setpoint across both heating and cooling regimes
+- O4. Evaluate MPC vs on/off baseline across all 3 climate zones and 3 efficiency levels, including heating-dominated (Chicago winter) and cooling-dominated (Miami summer) conditions
+- O5. Quantify the trade-off between thermal comfort (temperature stability) and total HVAC energy consumption under the MPC framework
+- O6. *(Optional — if time allows)* Implement a Reinforcement Learning control agent and compare its performance against the MPC framework using the same dataset, evaluation metrics, and climate zones
+
+---
+
+## Project Structure
+
+```
+hvac_project/
+│
+├── CLAUDE.md                        ← YOU ARE HERE — project context for Claude Code
+├── config.py                        ← Central config (S3 path, constants, colours)
+├── requirements.txt                 ← Python dependencies
+├── README.md                        ← Setup instructions
+│
+├── notebooks/
+│   ├── A_Synthetic_Operation_Dataset.ipynb  ← Original AlphaBuilding demo notebook
+│   ├── AlphaBuilding_README.md              ← Original dataset README
+│   ├── 01_load_data.ipynb           ← Environment check, S3 connection, data loading ✓
+│   ├── 02_eda.ipynb                 ← Exploratory data analysis (TO BUILD)
+│   ├── 03_features.ipynb            ← Feature engineering (TO BUILD)
+│   ├── 04_ml_model.ipynb            ← ML model training & evaluation (TO BUILD)
+│   ├── 05_mpc.ipynb                 ← MPC framework (TO BUILD)
+│   └── 06_rl.ipynb                  ← RL agent & MPC comparison — OPTIONAL (TO BUILD)
+│
+├── data/
+│   └── processed/                   ← Locally cached Parquet files (gitignored)
+│
+└── figures/                         ← Saved plots for the thesis
+```
+
+---
+
+## Workflow
+
+- **Claude Code** — all code writing, editing, debugging, building new notebooks, analysis
+- **VS Code** — running notebooks, viewing plots, browsing files
+- Claude Code has full autonomy to read, create, and edit files in this project
+- Always update `CLAUDE.md` when significant decisions, findings, or status changes occur
+
+### config.py
+Import at the top of any notebook that needs shared constants:
+```python
+import sys; sys.path.append('..')
+from config import *
+```
+Contains: `S3_PATH`, `J_TO_KWH`, `CLIMATE_ZONES`, `EFFICIENCY_LEVELS`, `CLIMATE_COLOURS`, `EFFICIENCY_COLOURS`, `TEMP_SETPOINT_C` (22°C), `TEMP_COMFORT_LOW` (20°C), `TEMP_COMFORT_HIGH` (22°C)
+
+### Notebooks are self-contained
+Each notebook defines its own `load_simulation()` function and constants inline.
+`data_loader.py` has been removed — do not reference it.
+
+The standard DataFrame columns produced by `load_simulation()` are:
+`hvac_kwh, total_kwh, gas_kwh, lighting_kwh, plugloads_kwh, oat_c, occupancy, hour, minute, dayofweek, month, is_weekday, is_occupied, oat_roll1h, oat_roll3h, climate, efficiency, year, run`
+
+---
+
+## Python Stack
+
+| Library | Purpose |
+|---------|---------|
+| `pandas`, `numpy` | Data manipulation |
+| `h5py`, `s3fs` | HDF5 / S3 access |
+| `scikit-learn`, `xgboost` | ML models (Phase 1) |
+| `tensorflow` / `keras` | LSTM (Phase 1) |
+| `scipy` | MPC optimisation (Phase 2) |
+| `matplotlib`, `seaborn` | Visualisation |
+| `tqdm` | Progress bars |
+| `pyarrow` | Parquet file support |
+
+Python version: 3.9 | Virtual environment: `venv/` in project root
+
+---
+
+## Thesis Chapter Plan
+
+| Chapter | Title |
+|---------|-------|
+| 1 | Introduction |
+| 2 | Literature Review |
+| 3 | Dataset and Exploratory Data Analysis |
+| 4 | ML Model for Total HVAC Demand Prediction |
+| 5 | Model Predictive Control Framework |
+| 6 | Results and Evaluation |
+| 7 | *(Optional)* Reinforcement Learning Agent & Comparison with MPC |
+| 8 | Discussion |
+| 9 | Conclusions and Future Work |
+
+---
+
+## Current Status
+
+- [x] Interim report submitted (13 March 2026)
+- [x] Project structure built
+- [x] `01_load_data.ipynb` — complete. 3 Parquet files saved:
+  - `TMY3_1A_Standard_run_1.parquet`
+  - `TMY3_3C_Standard_run_1.parquet`
+  - `TMY3_5A_Standard_run_1.parquet`
+- [x] `02_eda.ipynb` — built, ready to run
+- [ ] `03_features.ipynb` — next step after EDA
+- [ ] `04_ml_model.ipynb`
+- [ ] `05_mpc.ipynb`
+- [ ] `06_rl.ipynb` — optional, if time allows
+- [ ] Thesis write-up
+
+---
+
+## Key Decisions & Findings So Far
+
+### ElectricityHVAC is a mixed signal
+`hvac_kwh` captures total HVAC electricity — heating + cooling + fans + pumps. It is NOT cooling-only. Chicago (5A) shows large spikes in January/February due to heating load — this is expected and valid, not an error.
+
+### Decision: train on full signal, no seasonal filtering
+Both the ML model (Phase 1) and MPC controller (Phase 2) use the full `hvac_kwh` signal across all seasons. No OAT filtering is applied. This makes the framework more general and makes Chicago's winter a meaningful test case rather than noise to exclude.
+
+### MPC controls full HVAC — heating and cooling
+The MPC cost function minimises deviation from the 22°C setpoint regardless of season. In summer it reduces cooling; in winter it manages heating. The controller works in both regimes.
+
+### Parquet files saved (Standard efficiency, TMY3, run_1)
+- `TMY3_1A_Standard_run_1.parquet` — Miami
+- `TMY3_3C_Standard_run_1.parquet` — San Francisco  
+- `TMY3_5A_Standard_run_1.parquet` — Chicago
+
+Load efficiency comparison data separately if needed (Low/High efficiency not yet saved).
+
+- Always use `anon=True` in `s3fs.S3FileSystem()` — the S3 bucket is public
+- Never hardcode the S3 path — use `S3_PATH` from `config.py`
+- Raw HDF5 energy variables are in **Joules** — always convert with `J_TO_KWH`
+- Target variable for ML is `hvac_kwh` — this is **total HVAC electricity** (heating + cooling combined), not cooling only. Never filter to cooling-season only for ML training.
+- `hvac_kwh` spikes in Chicago (5A) during winter are expected and valid — they reflect heating-season HVAC load, not errors
+- MPC controls total HVAC output across all seasons — cost function minimises temperature deviation from **22°C setpoint** and total HVAC energy
+- Thermal comfort band is **20–22°C** — applies year-round for both heating and cooling
+- Use `CLIMATE_COLOURS` and `EFFICIENCY_COLOURS` from `config.py` for all plots
+- Save all figures to `figures/` with descriptive names (e.g. `02_correlation_heatmap.png`)
+- Save processed data as **Parquet** to `data/processed/` — never commit raw HDF5 to git
+- Add `data/processed/` to `.gitignore`
