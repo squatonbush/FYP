@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"PostToolUse\", \"additionalContext\": \"REMINDER: If this change represents a significant project update (notebook completed, new columns added, key decision made, status change, EDA findings), update CLAUDE.md to reflect the current project state.\"}}'",
+            "statusMessage": "Checking if CLAUDE.md needs updating..."
+          }
+        ]
+      }
+    ]
+  }
+}
