@@ -184,7 +184,8 @@ Python version: 3.9 | Virtual environment: `venv/` in project root
   - `TMY3_5A_Standard_run_1.parquet`
 - [x] `02_eda.ipynb` — complete. 15 figures saved to `figures/`
 - [x] `03_features.ipynb` — complete. Feature matrix + scalers saved to `data/processed/`
-- [ ] `04_ml_model.ipynb` — **current step** (built, ready to run)
+- [x] `04_ml_model.ipynb` — complete. Models trained and saved to `data/processed/`
+- [ ] `05_mpc.ipynb` — **current step**
 - [ ] `05_mpc.ipynb`
 - [ ] `06_rl.ipynb` — optional, if time allows
 - [ ] Thesis write-up
@@ -246,6 +247,24 @@ Saved to `data/processed/`:
 - Top features by |Pearson r| with `hvac_kwh`: hvac_roll1h (0.951) > hvac_lag1 (0.930) > hvac_lag6 (0.833) > hvac_lag144 (0.778) > plugloads_kwh (0.596, full only) > lighting_kwh (0.580, full only) > hour_cos (0.575) > is_occupied (0.541) > occupancy (0.531) > oat_sq (0.485)
 - Autoregressive features dominate — strong HVAC thermal inertia confirmed
 - `oat_sq` ranking at 0.485 confirms U-shaped HVAC-OAT relationship across climates
+
+### ML model results (notebook 04)
+Saved to `data/processed/`: `model_rf.pkl`, `model_xgb.pkl`, `model_lstm.keras`, `model_results.json`
+
+| Model | Val RMSE | Val R² | Test RMSE | Test R² |
+|-------|----------|--------|-----------|---------|
+| Persistence baseline | 1.365 kWh | 0.843 | 1.357 kWh | 0.868 |
+| Random Forest | 0.225 kWh | 0.9957 | 0.345 kWh | 0.9915 |
+| **XGBoost** | **0.230 kWh** | **0.9956** | **0.340 kWh** | **0.9917** |
+| LSTM | 0.290 kWh | 0.9929 | 1.532 kWh | 0.832 |
+
+**Best model: XGBoost** (test RMSE = 0.340 kWh, R² = 0.9917) — ~75% RMSE reduction over baseline.
+
+**Key findings:**
+- RF and XGBoost both excellent; XGBoost marginally wins on test RMSE
+- LSTM val→test collapse (0.290 → 1.532 kWh): overfits to seasonal training distribution; fails to generalise to Chicago heating season in Nov–Dec test set. Tree models more robust to temporal distribution shift.
+- All models trained on FULL_FEATURES (31 cols) — MPC notebook will retrain XGBoost on MPC_FEATURES (29 cols, no lighting/plugloads)
+- LOOKBACK = 24 steps (4h) for LSTM sequences, created per climate to avoid zone bleed
 
 - Always use `anon=True` in `s3fs.S3FileSystem()` — the S3 bucket is public
 - Never hardcode the S3 path — use `S3_PATH` from `config.py`
