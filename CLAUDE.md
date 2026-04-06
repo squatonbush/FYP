@@ -100,10 +100,10 @@ hvac_project/
 ├── notebooks/
 │   ├── A_Synthetic_Operation_Dataset.ipynb  ← Original AlphaBuilding demo notebook
 │   ├── AlphaBuilding_README.md              ← Original dataset README
-│   ├── 01_load_data.ipynb           ← Environment check, S3 connection, data loading ✓
+│   ├── 01_load_data.ipynb           ← Environment check, S3 connection, data loading ✓ (incl. 81-sim multi-year loader)
 │   ├── 02_eda.ipynb                 ← Exploratory data analysis ✓
-│   ├── 03_features.ipynb            ← Feature engineering (IN PROGRESS)
-│   ├── 04_ml_model.ipynb            ← ML model training & evaluation (TO BUILD)
+│   ├── 03_features.ipynb            ← Feature engineering ✓ (v1 + v2 outputs)
+│   ├── 04_ml_model.ipynb            ← ML model training & evaluation ✓ (v1 + v2 sections)
 │   ├── 05_mpc.ipynb                 ← MPC framework (TO BUILD)
 │   └── 06_rl.ipynb                  ← RL agent & MPC comparison — OPTIONAL (TO BUILD)
 │
@@ -183,10 +183,9 @@ Python version: 3.9 | Virtual environment: `venv/` in project root
   - `TMY3_3C_Standard_run_1.parquet`
   - `TMY3_5A_Standard_run_1.parquet`
 - [x] `02_eda.ipynb` — complete. 15 figures saved to `figures/`
-- [x] `03_features.ipynb` — complete. Feature matrix + scalers saved to `data/processed/`
-- [x] `04_ml_model.ipynb` — complete. Models trained and saved to `data/processed/`
+- [x] `03_features.ipynb` — complete. Single-year (v1) + 81-sim expanded (v2) feature matrices saved
+- [x] `04_ml_model.ipynb` — complete. v1 (TMY3) + v2 (81-sim) models trained and saved
 - [ ] `05_mpc.ipynb` — **current step**
-- [ ] `05_mpc.ipynb`
 - [ ] `06_rl.ipynb` — optional, if time allows
 - [ ] Thesis write-up
 
@@ -220,24 +219,26 @@ Each file contains all columns including the newer `indoor_temp_c`, `cooling_kwh
 - Comfort band set to **20–22°C** — to be reviewed in discussion chapter
 
 ### Feature engineering outputs (notebook 03)
-Saved to `data/processed/`:
+
+**v1 — single year (TMY3, Standard, run_1, 3 climates):**
 - `features_train.parquet` (110,073 rows), `features_val.parquet` (23,586), `features_test.parquet` (23,589)
 - `scaler_X.pkl` — StandardScaler for 20 continuous X features (fit on train only)
-- `scaler_y.pkl` — StandardScaler for `hvac_kwh` target; mean=3.72 kWh, scale=3.91 kWh
+- `scaler_y.pkl` — StandardScaler for `hvac_kwh`; mean=3.72 kWh, scale=3.91 kWh
 - `feature_sets.json` — FULL_FEATURES (31 cols), MPC_FEATURES (29 cols), metadata
+- Split: 70/15/15 temporal per climate; train 2006-01-02→09-13, val →11-07, test →12-31
 
-**Two feature sets:**
-- `FULL_FEATURES` (31): includes `lightning_kwh`, `plugloads_kwh`, `wetbulb_c`, `wetbulb_dev` — max predictive power for RF/XGBoost
-- `MPC_FEATURES` (29): excludes plug loads & lighting — only forecastable inputs for Phase 2 deployment
+**v2 — 81-simulation expanded dataset:**
+- `multi_year_raw.parquet` — 4,257,960 rows, 24 columns (raw combined)
+- `features_train_v2.parquet`, `features_val_v2.parquet`, `features_test_v2.parquet`
+- `scaler_X_v2.pkl`, `scaler_y_v2.pkl`
+- `feature_sets_v2.json` — FULL_FEATURES_V2 (34 cols), MPC_FEATURES_V2 (32 cols)
+- Split: year-level (train=1991+2000, val=2005 Jan–Jun, test=2005 Jul–Dec)
 
-**Engineered features added:** `hour_sin/cos`, `month_sin/cos`, `dow_sin/cos`, `hvac_lag1/6/144`, `hvac_roll1h/24h`, `oat_dev`, `wetbulb_dev`, `indoor_dev`, `oat_sq`, `climate_1A/3C/5A`
+**Feature sets:**
+- `FULL_FEATURES` (31) / `FULL_FEATURES_V2` (34): includes `lighting_kwh`, `plugloads_kwh`, `wetbulb_c`, `wetbulb_dev` + efficiency OHE (v2 only)
+- `MPC_FEATURES` (29) / `MPC_FEATURES_V2` (32): excludes plug loads & lighting — forecastable inputs only
 
-**Feature counts:** FULL_FEATURES = 31, MPC_FEATURES = 29, continuous cols scaled = 20
-
-**Split:** 70/15/15 per climate (sequential); first 144 rows per climate dropped to remove lag NaNs (432 rows total, 0.27% loss)
-- Train: 2006-01-02 → 2006-09-13 (winter, spring, summer)
-- Val:   2006-09-13 → 2006-11-07 (autumn)
-- Test:  2006-11-07 → 2006-12-31 (late autumn / early winter)
+**Engineered features:** `hour_sin/cos`, `month_sin/cos`, `dow_sin/cos`, `hvac_lag1/6/144`, `hvac_roll1h/24h`, `oat_dev`, `wetbulb_dev`, `indoor_dev`, `oat_sq`, `climate_1A/3C/5A`, `efficiency_High/Low/Standard` (v2 only)
 
 **Key results from running notebook 03:**
 - OAT ranges confirmed: 1A [5.0, 35.6]°C · 3C [2.2, 32.8]°C · 5A [-22.8, 35.0]°C
@@ -248,23 +249,38 @@ Saved to `data/processed/`:
 - Autoregressive features dominate — strong HVAC thermal inertia confirmed
 - `oat_sq` ranking at 0.485 confirms U-shaped HVAC-OAT relationship across climates
 
-### ML model results (notebook 04)
+### ML model results — v1: single year (notebook 04, Part 1)
 Saved to `data/processed/`: `model_rf.pkl`, `model_xgb.pkl`, `model_lstm.keras`, `model_results.json`
+Dataset: TMY3 × Standard efficiency × run_1 × 3 climates. Split: 70/15/15 temporal.
 
 | Model | Val RMSE | Val R² | Test RMSE | Test R² |
 |-------|----------|--------|-----------|---------|
 | Persistence baseline | 1.365 kWh | 0.843 | 1.357 kWh | 0.868 |
-| Random Forest | 0.225 kWh | 0.9957 | 0.345 kWh | 0.9915 |
+| Random Forest (500 trees) | 0.225 kWh | 0.9957 | 0.345 kWh | 0.9915 |
 | **XGBoost** | **0.230 kWh** | **0.9956** | **0.340 kWh** | **0.9917** |
 | LSTM | 0.290 kWh | 0.9929 | 1.532 kWh | 0.832 |
 
-**Best model: XGBoost** (test RMSE = 0.340 kWh, R² = 0.9917) — ~75% RMSE reduction over baseline.
+**Best model v1: XGBoost** (test RMSE = 0.340 kWh, R² = 0.9917) — ~75% RMSE reduction over baseline.
+- LSTM val→test collapse: overfits to seasonal training distribution; tree models more robust to temporal shift.
+- LOOKBACK = 24 steps (4h) for LSTM sequences, created per climate to avoid zone bleed.
+- v1 outputs preserved for thesis documentation (LSTM comparison rationale).
 
-**Key findings:**
-- RF and XGBoost both excellent; XGBoost marginally wins on test RMSE
-- LSTM val→test collapse (0.290 → 1.532 kWh): overfits to seasonal training distribution; fails to generalise to Chicago heating season in Nov–Dec test set. Tree models more robust to temporal distribution shift.
-- All models trained on FULL_FEATURES (31 cols) — MPC notebook will retrain XGBoost on MPC_FEATURES (29 cols, no lighting/plugloads)
-- LOOKBACK = 24 steps (4h) for LSTM sequences, created per climate to avoid zone bleed
+### ML model results — v2: 81-simulation expanded dataset (notebook 04, Part 2)
+Saved to `data/processed/`: `model_rf_v2.pkl`, `model_xgb_v2.pkl`, `model_results_v2.json`
+Dataset: 3 AMY years (1991, 2000, 2005) × 3 runs × 3 efficiency levels × 3 climates = 81 simulations (~4.25M rows).
+Split: year-level — train on 1991+2000, val on 2005 Jan–Jun, test on 2005 Jul–Dec.
+Features: FULL_FEATURES_V2 = 34 (adds efficiency_High, efficiency_Low, efficiency_Standard OHE).
+LSTM excluded — 4M sequences × (24, 34) float32 ≈ 13 GB RAM; infeasible on MacBook.
+
+*Results to fill in after running notebook 04 Part 2.*
+
+**Key v2 design decisions:**
+- Efficiency OHE added as explicit feature — model learns Low/Standard/High differences directly
+- Lag/rolling features computed per (climate, efficiency, run, year) group — prevents cross-simulation bleed
+- RF reduced to 300 trees (from 500) to keep training time feasible on 2.8M rows
+- XGBoost: same hyperparameters, early stopping on val set
+- `get_efficiency()` helper reconstructs efficiency label from OHE for per-efficiency breakdown
+- **MPC (notebook 05) will use**: `model_xgb_v2.pkl` + `MPC_FEATURES_V2` (32 features)
 
 - Always use `anon=True` in `s3fs.S3FileSystem()` — the S3 bucket is public
 - Never hardcode the S3 path — use `S3_PATH` from `config.py`
