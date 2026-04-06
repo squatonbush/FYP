@@ -89,6 +89,7 @@ Run notebooks in order. Each one depends on outputs from the previous:
 | `total_kwh` | Total site electricity | kWh |
 | `gas_kwh` | Natural gas consumption | kWh |
 | `oat_c` | Outdoor air dry-bulb temperature | °C |
+| `wetbulb_c` | Outdoor air wet-bulb temperature | °C |
 | `indoor_temp_c` | Mean indoor air temperature (all zones) | °C |
 | `occupancy` | Total building occupant count | persons |
 | `lighting_kwh` | Interior lighting electricity | kWh |

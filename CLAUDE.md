@@ -60,7 +60,8 @@ The sustainability framing is central: buildings account for ~40% of global ener
 | `GasFacility` | Natural gas (J) |
 | `CoolingElectricity` | Cooling-only electricity (J) |
 | `HeatingElectricity` | Heating-only electricity (J) |
-| `SiteOutdoorAirDrybulbTemperature` | Outdoor air temperature (°C) |
+| `SiteOutdoorAirDrybulbTemperature` | Outdoor air dry-bulb temperature (°C) |
+| `SiteOutdoorAirWetbulbTemperature` | Outdoor air wet-bulb temperature (°C) |
 | `ZoneMeanAirTemperature` | Per-zone indoor air temperature (°C) |
 | `ZonePeopleOccupantCount` | Per-zone occupancy counts |
 | `InteriorLightsElectricity` | Lighting electricity (J) |
@@ -134,7 +135,7 @@ Each notebook defines its own `load_simulation()` function and constants inline.
 `data_loader.py` has been removed — do not reference it.
 
 The standard DataFrame columns produced by `load_simulation()` are:
-`hvac_kwh, total_kwh, gas_kwh, lighting_kwh, plugloads_kwh, cooling_kwh, heating_kwh, oat_c, indoor_temp_c, occupancy, hour, minute, dayofweek, month, is_weekday, is_occupied, oat_roll1h, oat_roll3h, climate, efficiency, year, run`
+`hvac_kwh, total_kwh, gas_kwh, lighting_kwh, plugloads_kwh, cooling_kwh, heating_kwh, oat_c, wetbulb_c, indoor_temp_c, occupancy, hour, minute, dayofweek, month, is_weekday, is_occupied, oat_roll1h, oat_roll3h, climate, efficiency, year, run`
 
 Note: `season` is derived in notebooks via `month` mapping (Dec/Jan/Feb → Winter, etc.) and is not produced by `load_simulation()` directly.
 
@@ -182,8 +183,8 @@ Python version: 3.9 | Virtual environment: `venv/` in project root
   - `TMY3_3C_Standard_run_1.parquet`
   - `TMY3_5A_Standard_run_1.parquet`
 - [x] `02_eda.ipynb` — complete. 15 figures saved to `figures/`
-- [ ] `03_features.ipynb` — **current step**
-- [ ] `04_ml_model.ipynb`
+- [x] `03_features.ipynb` — complete. Feature matrix + scalers saved to `data/processed/`
+- [ ] `04_ml_model.ipynb` — **current step** (built, ready to run)
 - [ ] `05_mpc.ipynb`
 - [ ] `06_rl.ipynb` — optional, if time allows
 - [ ] Thesis write-up
@@ -216,6 +217,35 @@ Each file contains all columns including the newer `indoor_temp_c`, `cooling_kwh
 - **Occupancy has a moderate positive correlation** with HVAC demand during occupied hours
 - **Indoor temperature** tracks close to 22°C setpoint in most conditions; largest drift occurs in Chicago winters
 - Comfort band set to **20–22°C** — to be reviewed in discussion chapter
+
+### Feature engineering outputs (notebook 03)
+Saved to `data/processed/`:
+- `features_train.parquet` (110,073 rows), `features_val.parquet` (23,586), `features_test.parquet` (23,589)
+- `scaler_X.pkl` — StandardScaler for 20 continuous X features (fit on train only)
+- `scaler_y.pkl` — StandardScaler for `hvac_kwh` target; mean=3.72 kWh, scale=3.91 kWh
+- `feature_sets.json` — FULL_FEATURES (31 cols), MPC_FEATURES (29 cols), metadata
+
+**Two feature sets:**
+- `FULL_FEATURES` (31): includes `lightning_kwh`, `plugloads_kwh`, `wetbulb_c`, `wetbulb_dev` — max predictive power for RF/XGBoost
+- `MPC_FEATURES` (29): excludes plug loads & lighting — only forecastable inputs for Phase 2 deployment
+
+**Engineered features added:** `hour_sin/cos`, `month_sin/cos`, `dow_sin/cos`, `hvac_lag1/6/144`, `hvac_roll1h/24h`, `oat_dev`, `wetbulb_dev`, `indoor_dev`, `oat_sq`, `climate_1A/3C/5A`
+
+**Feature counts:** FULL_FEATURES = 31, MPC_FEATURES = 29, continuous cols scaled = 20
+
+**Split:** 70/15/15 per climate (sequential); first 144 rows per climate dropped to remove lag NaNs (432 rows total, 0.27% loss)
+- Train: 2006-01-02 → 2006-09-13 (winter, spring, summer)
+- Val:   2006-09-13 → 2006-11-07 (autumn)
+- Test:  2006-11-07 → 2006-12-31 (late autumn / early winter)
+
+**Key results from running notebook 03:**
+- OAT ranges confirmed: 1A [5.0, 35.6]°C · 3C [2.2, 32.8]°C · 5A [-22.8, 35.0]°C
+- `oat_dev` range [-44.8, +13.6]°C — Chicago winter (-22.8°C) is 44.8° below setpoint; Miami peaks only 13.6° above
+- `wetbulb_dev` range [-45.2, +4.9]°C — wetbulb never far above setpoint (expected: wetbulb ≤ drybulb always)
+- `indoor_dev` range [-6.4, +4.4]°C — largest undershoot in Chicago winters (heating struggles to reach 22°C)
+- Top features by |Pearson r| with `hvac_kwh`: hvac_roll1h (0.951) > hvac_lag1 (0.930) > hvac_lag6 (0.833) > hvac_lag144 (0.778) > plugloads_kwh (0.596, full only) > lighting_kwh (0.580, full only) > hour_cos (0.575) > is_occupied (0.541) > occupancy (0.531) > oat_sq (0.485)
+- Autoregressive features dominate — strong HVAC thermal inertia confirmed
+- `oat_sq` ranking at 0.485 confirms U-shaped HVAC-OAT relationship across climates
 
 - Always use `anon=True` in `s3fs.S3FileSystem()` — the S3 bucket is public
 - Never hardcode the S3 path — use `S3_PATH` from `config.py`
