@@ -48,7 +48,7 @@ The sustainability framing is central: buildings account for ~40% of global ener
 |-----------|--------|
 | Climate zones | 1A (Miami), 3C (San Francisco), 5A (Chicago) |
 | Efficiency levels | Low, Standard, High |
-| Weather years | 30 AMY years (1991–2020) + TMY3 reference |
+| Weather years | 30 AMY years per climate (ranges differ) + TMY3 reference. 1A: 1976–2005 · 3C: 1988–2017 · 5A: 1980–2009. Overlapping years available in all 3 climates: **1988–2005**. |
 | Occupancy runs | run_1 to run_5 (stochastic) |
 | Time resolution | 10-minute intervals (52,560 rows per annual simulation) |
 
@@ -232,7 +232,7 @@ Each file contains all columns including the newer `indoor_temp_c`, `cooling_kwh
 - `features_train_v2.parquet`, `features_val_v2.parquet`, `features_test_v2.parquet`
 - `scaler_X_v2.pkl`, `scaler_y_v2.pkl`
 - `feature_sets_v2.json` — FULL_FEATURES_V2 (34 cols), MPC_FEATURES_V2 (32 cols)
-- Split: year-level (train=1991+2000, val=2005 Jan–Jun, test=2005 Jul–Dec)
+- Split: year-level (train=1990+1997, val=2004 Jan–Jun, test=2004 Jul–Dec)
 
 **Feature sets:**
 - `FULL_FEATURES` (31) / `FULL_FEATURES_V2` (34): includes `lighting_kwh`, `plugloads_kwh`, `wetbulb_c`, `wetbulb_dev` + efficiency OHE (v2 only)
@@ -267,8 +267,8 @@ Dataset: TMY3 × Standard efficiency × run_1 × 3 climates. Split: 70/15/15 tem
 
 ### ML model results — v2: 81-simulation expanded dataset (notebook 04, Part 2)
 Saved to `data/processed/`: `model_rf_v2.pkl`, `model_xgb_v2.pkl`, `model_results_v2.json`
-Dataset: 3 AMY years (1991, 2000, 2005) × 3 runs × 3 efficiency levels × 3 climates = 81 simulations (~4.25M rows).
-Split: year-level — train on 1991+2000, val on 2005 Jan–Jun, test on 2005 Jul–Dec.
+Dataset: 3 AMY years (1990, 1997, 2004) × 3 runs × 3 efficiency levels × 3 climates = 81 simulations (~4.25M rows).
+Split: year-level — train on 1990+1997, val on 2004 Jan–Jun, test on 2004 Jul–Dec.
 Features: FULL_FEATURES_V2 = 34 (adds efficiency_High, efficiency_Low, efficiency_Standard OHE).
 LSTM excluded — 4M sequences × (24, 34) float32 ≈ 13 GB RAM; infeasible on MacBook.
 
