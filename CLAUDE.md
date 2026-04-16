@@ -216,7 +216,7 @@ Each file contains all columns including the newer `indoor_temp_c`, `cooling_kwh
 - **San Francisco (3C)** has the lowest and flattest HVAC demand — mild marine climate
 - **Occupancy has a moderate positive correlation** with HVAC demand during occupied hours
 - **Indoor temperature** tracks close to 22°C setpoint in most conditions; largest drift occurs in Chicago winters
-- Comfort band set to **20–22°C** — to be reviewed in discussion chapter
+- Comfort band updated to **23–24°C** (setpoint 23.5°C midpoint); prior 20–22°C band retired
 
 ### Feature engineering outputs (notebook 03)
 
@@ -272,15 +272,39 @@ Split: year-level — train on 1990+1997, val on 2004 Jan–Jun, test on 2004 Ju
 Features: FULL_FEATURES_V2 = 34 (adds efficiency_High, efficiency_Low, efficiency_Standard OHE).
 LSTM excluded — 4M sequences × (24, 34) float32 ≈ 13 GB RAM; infeasible on MacBook.
 
-*Results to fill in after running notebook 04 Part 2.*
+| Model | Val RMSE | Val R² | Test RMSE | Test R² |
+|-------|----------|--------|-----------|---------|
+| Random Forest (300 trees) | 0.2738 kWh | 0.9957 | 0.1859 kWh | 0.9979 |
+| XGBoost (1000 rounds, lr=0.05) | 0.3049 kWh | 0.9947 | 0.2441 kWh | 0.9964 |
+| **XGBoost (3000 rounds, lr=0.05)** | **0.2744 kWh** | **0.9957** | **0.2114 kWh** | **0.9973** |
+
+**Selected for MPC: XGBoost (3000 rounds)**
+- RF has lower test RMSE (0.1859 vs 0.2114) but is dominated by autoregressive lag features — produces flat optimisation landscape in MPC.
+- XGBoost distributes importance across OAT, occupancy, time features — physically meaningful, gives MPC controller actionable gradients.
+- XGBoost did not converge within 3000 rounds (best_iteration=2999) — val RMSE (0.2744) now matches RF (0.2738); remaining test gap is a tuning issue not a model limitation.
+- Both models achieve R² > 0.997 — highly accurate HVAC demand prediction across all climates and efficiency levels.
+
+**Per-climate test RMSE (Random Forest v2):**
+| Climate | RMSE | MAE | R² |
+|---------|------|-----|----|
+| 1A Miami | 0.2181 kWh | 0.0748 kWh | 0.9979 |
+| 3C San Francisco | 0.1336 kWh | 0.0559 kWh | 0.9966 |
+| 5A Chicago | 0.1955 kWh | 0.0767 kWh | 0.9977 |
+
+**Per-efficiency test RMSE (Random Forest v2):**
+| Efficiency | RMSE | MAE | R² |
+|------------|------|-----|----|
+| Low | 0.2574 kWh | 0.0939 kWh | 0.9971 |
+| Standard | 0.1518 kWh | 0.0636 kWh | 0.9984 |
+| High | 0.1198 kWh | 0.0500 kWh | 0.9984 |
 
 **Key v2 design decisions:**
 - Efficiency OHE added as explicit feature — model learns Low/Standard/High differences directly
 - Lag/rolling features computed per (climate, efficiency, run, year) group — prevents cross-simulation bleed
 - RF reduced to 300 trees (from 500) to keep training time feasible on 2.8M rows
-- XGBoost: same hyperparameters, early stopping on val set
+- XGBoost: same hyperparameters, early stopping on val set; hit 999/1000 rounds — no early stop triggered
 - `get_efficiency()` helper reconstructs efficiency label from OHE for per-efficiency breakdown
-- **MPC (notebook 05) will use**: `model_xgb_v2.pkl` + `MPC_FEATURES_V2` (32 features)
+- **MPC (notebook 05) will use**: `model_xgb_v2.pkl` + `MPC_FEATURES_V2` (32 features) — XGBoost selected for MPC due to more physically distributed feature importance
 
 - Always use `anon=True` in `s3fs.S3FileSystem()` — the S3 bucket is public
 - Never hardcode the S3 path — use `S3_PATH` from `config.py`
@@ -288,7 +312,7 @@ LSTM excluded — 4M sequences × (24, 34) float32 ≈ 13 GB RAM; infeasible on 
 - Target variable for ML is `hvac_kwh` — this is **total HVAC electricity** (heating + cooling combined), not cooling only. Never filter to cooling-season only for ML training.
 - `hvac_kwh` spikes in Chicago (5A) during winter are expected and valid — they reflect heating-season HVAC load, not errors
 - MPC controls total HVAC output across all seasons — cost function minimises temperature deviation from **22°C setpoint** and total HVAC energy
-- Thermal comfort band is **20–22°C** — applies year-round for both heating and cooling
+- Thermal comfort band is **23–24°C** (setpoint 23.5°C) — applies year-round for both heating and cooling
 - Use `CLIMATE_COLOURS` and `EFFICIENCY_COLOURS` from `config.py` for all plots
 - Save all figures to `figures/` with descriptive names (e.g. `02_correlation_heatmap.png`)
 - Save processed data as **Parquet** to `data/processed/` — never commit raw HDF5 to git
