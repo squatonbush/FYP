@@ -200,7 +200,86 @@ Python version: 3.9 | Virtual environment: `venv/` in project root
 Both the ML model (Phase 1) and MPC controller (Phase 2) use the full `hvac_kwh` signal across all seasons. No OAT filtering is applied. This makes the framework more general and makes Chicago's winter a meaningful test case rather than noise to exclude.
 
 ### MPC controls full HVAC — heating and cooling
-The MPC cost function minimises deviation from the 22°C setpoint regardless of season. In summer it reduces cooling; in winter it manages heating. The controller works in both regimes.
+The MPC cost function minimises deviation from a climate- and season-specific setpoint (see comfort bands above). In summer it reduces cooling; in winter it manages heating. The controller works in both regimes.
+
+### Decision: RC perturbation-form plant model (Δ-tracking)
+
+**History:** Three iterations of the MPC plant model have been attempted:
+1. **First attempt — absolute-form RC.** Open-loop 2016-step simulations drifted (especially Miami) because coefficient error compounded step-by-step.
+2. **Second attempt — ML dynamics (XGBoost).** Achieved R² > 0.99 on one-step validation but catastrophically failed inside MPC: optimiser pinned `u` at lower bound for 100% of timesteps across 3 of 4 windows; Chicago winter temp deviation *worsened* (1.45°C → 1.90°C). Root cause: ML was trained on thermostat-controlled data where T ≈ setpoint regardless of HVAC level, so it predicted weak HVAC→T coupling. The optimiser exploited this "free lunch" and the comfort barrier never activated.
+3. **Third attempt — absolute-form RC with corrected structure.** Fixed 3 of 4 windows (SF, Chicago summer, Chicago winter all improved substantially — Chicago summer violations 19.8% → 1.4%) but Miami baseline drifted 4.14°C open-loop (95% violations at u=1 — unphysical).
+4. **Fourth attempt (current) — RC in perturbation form.** Track δ = T_mpc − T_ref, where T_ref is the AlphaBuilding reference trajectory.
+
+**Perturbation-form equation:**
+```
+δ(t+1) = (α_persist − α_env)·δ(t)
+       + β_cool·(u−1)·hvac_cool_ref(t)
+       + β_heat·(u−1)·hvac_heat_ref(t)
+T_mpc(t+1) = T_ref(t+1) + δ(t+1)
+```
+
+**Derivation:** Subtract the RC equation evaluated at T_mpc and T_ref. All shared terms (OAT, occupancy, diurnal, intercept) cancel — only the response to Δhvac = (u−1)·hvac_ref remains.
+
+**Why this works:**
+- At u=1: δ stays at 0 by construction. Baseline ≡ the AlphaBuilding data exactly — zero drift possible.
+- At u≠1: δ captures only the *incremental* effect of control deviations. RC is used only for its sensitivity (β_cool, β_heat), not its absolute trajectory.
+- (α_p − α_env) is typically ~0.97 < 1, so δ decays back toward 0 when u returns to 1 — stable.
+- Isolates exactly the HVAC→T coupling we want; nuisance terms that caused drift are eliminated.
+
+**Baseline is now trivial:** `run_baseline()` returns the AlphaBuilding window directly (indoor_temp_c, hvac_kwh columns). No simulation needed — u=1 means "apply what the thermostat already applied". This is the correct reference.
+
+**RC coefficients retained per climate:** `rc_models = {'1A': {...}, '3C': {...}, '5A': {...}}` — fitted in Section 4 on 1990+1997 multi-year training data. Same coefficients as absolute-form; only the propagation mechanism changed.
+
+**ML dynamics files (`ml_dynamics_*.pkl`) are retained** in `data/processed/` for thesis comparison but not used by the MPC loop.
+
+### MPC architecture (notebook 05 — current)
+- **HVAC predictor:** `model_xgb_v2.pkl` (32 features → `hvac_kwh`) — predicts horizon HVAC demand (*framework component; perfect forecasts used for simulation*)
+- **Dynamics model (plant):** RC **perturbation-form** per climate — δ-tracking, zero-drift baseline
+- **Reference trajectory:** AlphaBuilding data (`indoor_temp_c`, `hvac_kwh`) — represents u=1 thermostat control
+- **Optimiser:** `scipy.minimize` L-BFGS-B, horizon H=12 (120 min), warm-start enabled (previous solution shifted); δ state carried across MPC steps
+- **Control variable:** u ∈ [0.5, 1.5] multiplying AlphaBuilding baseline HVAC
+- **Comfort bands:** empirically derived in Section 3b using **HVAC-mode-gated P50** (cooling_sp = P50 of indoor_temp_c when cooling_kwh > 0; heating_sp = P50 when heating_kwh > 0). Band = `[heating_sp − 1, cooling_sp + 1]` spans the observed control dead-band plus ASHRAE 55-2020 PMV ±1°C margin. All 9 (climate × season) combinations; embedded dynamically in `SIM_WINDOWS` via `get_comfort_band()`.
+- **HVAC capacity cap:** `HVAC_CAP[clim] = max(sim_data[clim]['hvac_kwh'])` — each climate's observed peak kWh/10-min. Applied in both `mpc_cost` (δ propagation uses effective u after cap) and `run_mpc` (hvac_applied = min(u·hvac_ref, cap)). Prevents u=1.5 from exceeding the actual equipment's delivered-capacity peak.
+- **Occupancy-gated comfort evaluation:** comfort violations and the W_TEMP / W_VIOL terms in the cost function activate **only during occupied hours**. HVAC setback during unoccupied periods (cooling setback ≈ 26.7°C, heating ≈ 15.6°C) is a deliberate energy-saving strategy built into the AlphaBuilding reference — counting it as discomfort was inflating baseline violations (e.g., SF winter 55.7% → 30.2% occupied-only; Chicago winter 68.0% → 6.5% occupied-only). Both metrics reported: `comfort_violation_pct` (occupied, primary) and `comfort_violation_pct_all` (all-hour, reference).
+- **Simulation windows:** 9 windows — 3 climates × 3 seasons each (2004 data, Standard, run_1):
+  - Miami: July (summer), April (shoulder), January (winter)
+  - San Francisco: July (summer), October (shoulder), January (winter)
+  - Chicago: July (summer), April (shoulder), January (winter)
+  - Each window: 14 days = 2016 steps. Season months: summer=[6,7,8], winter=[12,1,2], shoulder=[3,4,5,9,10,11].
+
+**Cost function — 4 terms with occupancy gating on comfort:**
+```
+cost = occ(τ)·W_TEMP·(T − sp)² + occ(τ)·W_VIOL·max(0, out-of-band)²
+     + W_ENERGY·hvac_delivered(τ) + W_SMOOTH·(Δu)²
+```
+where `hvac_delivered = min(u·hvac_ref, HVAC_CAP[clim])` and `occ(τ) ∈ {0,1}` is the occupancy mask over the horizon.
+
+| Weight | Value | Role |
+|--------|-------|------|
+| W_TEMP | 30 | Quadratic pull toward setpoint within comfort band (occupied hours only) |
+| W_VIOL | 500 | Hard barrier — heavy penalty if T exits comfort band (occupied hours only) |
+| W_ENERGY | 1 | Reward for HVAC reduction (always active) |
+| W_SMOOTH | 5 | Penalise rapid changes in u — prevents bang-bang behaviour (always active) |
+
+**Weight calibration rationale:** With the RC plant model, reducing `u` now produces a real temperature response, so the comfort term and barrier can do their job without heavy over-weighting. `W_VIOL` is high (500) to make band violations decisively costly; `W_ENERGY` is kept at 1 since the RC coupling itself limits how far the optimiser can push `u` down. Gating comfort terms on occupancy lets MPC exploit the setback window for energy savings while maintaining comfort during occupied hours — matching how real buildings are operated.
+
+### MPC simulation — what is and isn't realistic
+
+**What is realistic:**
+- Receding-horizon MPC architecture with physics-grounded plant model — industry standard approach
+- 12-step / 120-min horizon — appropriate for building thermal mass
+- Climate-zone comparison across 3 zones — meaningful for policy generalisation
+- Hybrid architecture: data-driven HVAC demand predictor (XGBoost) + physics RC plant model — matches practice where control engineers use simple interpretable thermal models
+
+**What is NOT realistic (known limitations — state explicitly in thesis):**
+- **Perfect forecasts** — OAT, occupancy, and time are known exactly over the horizon. Real systems use weather forecasts (±1–2°C error) and occupancy predictions (±20–30%). This is the "certainty equivalence" assumption, standard in academic MPC.
+- **No model-plant mismatch** — the MPC's internal RC coefficients are fitted on the same AlphaBuilding data used to define the baseline reference trajectory. Real deployments suffer from mismatch between learned model and actual building response — the primary source of real-world underperformance.
+- **Perturbation-form assumes valid reference** — the plant is linearised around the AlphaBuilding u=1 trajectory. For large excursions (u near 0.5 or 1.5 sustained over many steps), the RC linearisation degrades. Conservative δ growth limits this in practice, but extrapolation beyond the data is untested.
+- **Single u multiplier** — real HVAC control acts on supply air temperature, chilled water setpoints, fan speeds, VAV dampers — not a single scalar. Mapping from actuators to `hvac_kwh` is nonlinear with delays.
+- **Limited actuator constraints** — equipment capacity cap is applied (hvac_delivered ≤ observed peak), but no minimum on/off times, ramp rate limits, or chiller staging logic. A simple Δu smoothness penalty (W_SMOOTH) approximates ramp control in aggregate.
+- **Single aggregated zone** — multiple thermal zones treated as one indoor temperature.
+
+**Thesis framing:** Results represent an **upper bound on achievable performance under ideal conditions**. The simulation-in-the-loop framework eliminates model-plant mismatch by design. Future work should evaluate robustness to forecast error and model mismatch.
 
 ### Parquet files saved (Standard efficiency, TMY3, run_1)
 - `TMY3_1A_Standard_run_1.parquet` — Miami
@@ -216,7 +295,24 @@ Each file contains all columns including the newer `indoor_temp_c`, `cooling_kwh
 - **San Francisco (3C)** has the lowest and flattest HVAC demand — mild marine climate
 - **Occupancy has a moderate positive correlation** with HVAC demand during occupied hours
 - **Indoor temperature** tracks close to 22°C setpoint in most conditions; largest drift occurs in Chicago winters
-- Comfort band updated to **23–24°C** (setpoint 23.5°C midpoint); prior 20–22°C band retired
+- Comfort bands are **derived empirically from data** (2004 Standard run_1 occupied-hour indoor temperatures) using an **HVAC-mode-gated P50** method:
+  - **Method:** For each (climate, season), separate occupied-hour samples into cooling-active (cooling_kwh > 0) and heating-active (heating_kwh > 0) subsets. Take P50 of indoor_temp_c in each → `cooling_sp` and `heating_sp`. Band = `[heating_sp − 0.5, cooling_sp + 0.5]`. If only one mode is active, use `[sp − 0.5, sp + 0.5]`.
+  - **Why HVAC-mode gating:** The AlphaBuilding thermostat uses separate cooling and heating setpoints. A simple P50 of all occupied temps gives a band around whichever mode dominates (e.g., SF winter heating → narrow band missing the cooling regime that does activate). Mode gating reads the thermostat setpoints directly from observed equipment activation states.
+  - **Why ±0.5°C margin (ASHRAE 55-2020 Class A):** AlphaBuilding's thermostat holds occupied-hour T within ≈ ±0.15°C of design setpoint — the natural operating envelope spans < 0.3°C per window. With the earlier ±1°C margin (ASHRAE Class B), the comfort band was 4× wider than the observed envelope and produced trivially 0% baseline violations in 7 of 9 windows, making the metric useless for discriminating controller performance. ASHRAE 55-2020 **Class A** (premium indoor environment) uses PMV ±0.2 ≈ ±0.5°C operative temperature — the physically motivated tight comfort standard for office work. This gives a band (1.0-1.4°C wide) that meaningfully discriminates baseline from MPC.
+  - **Comfort bands used in MPC (HVAC-mode-gated, ±0.5°C Class A):**
+    | Climate/Season | Band (°C) | Baseline viol% (occ) |
+    |---|---|---|
+    | Miami summer    | [23.6, 24.6] | 0.0 (genuine perfect regulation) |
+    | Miami shoulder  | [23.2, 24.6] | ~0.7 |
+    | Miami winter    | [23.2, 24.4] | ~1.5 |
+    | SF summer       | [23.4, 24.5] | ~1.1 |
+    | SF shoulder     | [23.2, 24.4] | ~1.9 |
+    | SF winter       | [22.7, 23.7] | ~60.5 (real comfort gap during heating ramp-up) |
+    | Chicago summer  | [23.4, 24.5] | 0.0 (tight cooling control) |
+    | Chicago shoulder| [22.6, 23.8] | ~17.6 |
+    | Chicago winter  | [21.4, 22.5] | ~16.6 |
+  - **Occupancy gating:** Comfort violations are counted ONLY during occupied hours. Unoccupied setback (cooling ≈ 26.7°C, heating ≈ 15.6°C) is a deliberate energy-saving strategy — counting it as discomfort inflated baseline metrics (e.g., SF winter 55.7% → 30.2% occupied; Chicago winter 68.0% → 6.5% occupied).
+  - These are **computed live in Section 3b of notebook 05** — COMFORT_BANDS, SETPOINTS, and HVAC_CAP dicts start empty and are populated by the analysis cell
 
 ### Feature engineering outputs (notebook 03)
 
@@ -311,8 +407,8 @@ LSTM excluded — 4M sequences × (24, 34) float32 ≈ 13 GB RAM; infeasible on 
 - Raw HDF5 energy variables are in **Joules** — always convert with `J_TO_KWH`
 - Target variable for ML is `hvac_kwh` — this is **total HVAC electricity** (heating + cooling combined), not cooling only. Never filter to cooling-season only for ML training.
 - `hvac_kwh` spikes in Chicago (5A) during winter are expected and valid — they reflect heating-season HVAC load, not errors
-- MPC controls total HVAC output across all seasons — cost function minimises temperature deviation from **22°C setpoint** and total HVAC energy
-- Thermal comfort band is **23–24°C** (setpoint 23.5°C) — applies year-round for both heating and cooling
+- MPC controls total HVAC output across all seasons — cost function minimises temperature deviation from a **climate- and season-specific setpoint** and total HVAC energy
+- Comfort bands and setpoints are per-climate/season — derived in Section 3b of `05_mpc.ipynb` (COMFORT_BANDS starts empty in Cell 2 and is populated by the analysis cell)
 - Use `CLIMATE_COLOURS` and `EFFICIENCY_COLOURS` from `config.py` for all plots
 - Save all figures to `figures/` with descriptive names (e.g. `02_correlation_heatmap.png`)
 - Save processed data as **Parquet** to `data/processed/` — never commit raw HDF5 to git
