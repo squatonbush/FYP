@@ -266,13 +266,18 @@ Pre-pivot chapter plan (MPC framework + RL) is superseded. All reference numbers
 - [x] **`05_mpc.ipynb` archived** → `notebooks/05_mpc_archive.ipynb` (git mv, archive preamble cell inserted). Artifacts retained on disk: `ml_dynamics_{1A,3C,5A}.pkl`, `mpc_results.json`, `figures/05_*.png`.
 - [x] `docs/references.md` created — 40-reference thesis bibliography across 3 pillars (climate impact, grid carbon, retrofit MACC).
 - [x] `config.py` extended with `DATA_EXTERNAL`, `DATA_EGRID`, `DATA_CAMBIUM`, `DOCS_DIR`, `AMY_YEARS_PIVOT`, `GRID_REGIONS`, `GRID_REGIONS_CAMBIUM`, `CARBON_PRICE_ETS_2026`, `CARBON_PRICE_GB_2022`, `CARBON_PRICE_GB_2050`, `CARBON_PRICE_SCC_USD`, `GBP_PER_USD`, `ASSET_LIFE_YEARS`, `DISCOUNT_RATE`.
-- [ ] **Execute Section 12 cells in `01_load_data.ipynb`** — fetch 1988/1996/2005 × 3 clim × 3 eff × run_1 from S3 and produce `multi_year_pivot_raw.parquet` (current step — manual run required in VS Code).
-- [ ] `05_climate_trends.ipynb` — new notebook (O3): CDD/HDD trends, climate sensitivity regression, warming counterfactual, trend detection.
-- [ ] `06_grid_carbon.ipynb` — new notebook (O4): eGRID + Cambium ingestion, climate-to-grid mapping, hourly profile visualisation, annual emissions matrix, peak coincidence.
+- [x] **Execute Section 12 cells in `01_load_data.ipynb`** — `multi_year_pivot_raw.parquet` confirmed present (2,838,240 rows: 6 AMY years × 3 climates × 3 efficiency × run_1).
+- [x] `05_climate_trends.ipynb` — **WRITTEN (2026-04-19)**. All 6 sections implemented and smoke-tested. Ready to execute in VS Code. Key design decisions:
+  - Sections 1–3: CDD₁₈/HDD₁₅ from 10-min OAT; OLS sensitivity β_CDD per (climate, efficiency); scatter + trend plots.
+  - Section 4: Observed 1988 vs 2005 counterfactual (actual HVAC Δ); XGBoost re-prediction using `scaler_X_v2` + `scaler_y_v2` (3–7% annual error vs actuals — validated).
+  - Section 5: Linear trend regression of annual HVAC on year; early indication of weak trends (high p-values) — climate variability dominates over monotonic trend in 6-AMY-year window.
+  - Section 6: Saves `data/processed/climate_sensitivity.json`; figures `05_cdd_hdd_trends.png`, `05_climate_sensitivity.png`, `05_warming_counterfactual.png`, `05_annual_hvac_trajectory.png`.
+  - **Note:** `statsmodels` not in original `requirements.txt` — install via `pip install statsmodels` (done in venv).
+- [ ] `06_grid_carbon.ipynb` — new notebook (O4): eGRID + Cambium ingestion, climate-to-grid mapping, hourly profile visualisation, annual emissions matrix, peak coincidence. **Next step.**
 - [ ] `07_carbon_optimisation.ipynb` — new notebook (O5, O6): flexibility envelope (from salvaged RC model), carbon-optimal scheduling, retrofit MACC, scenario comparison, carbon-price sensitivity.
 - [ ] Thesis write-up.
 
-**Timeline.** ~6 weeks to thesis (current date 2026-04-18; target late May / early June 2026). Week 1: config + CLAUDE.md + nb 01 AMY extension. Week 2: nb 05 climate trends. Week 3–4: nb 06 grid carbon. Week 5–6: nb 07 carbon optimisation.
+**Timeline.** ~6 weeks to thesis (current date 2026-04-19; target late May / early June 2026). Week 1 done: config + CLAUDE.md + nb 01 AMY extension + nb 05 written. Week 2: execute nb 05 + nb 06 grid carbon. Week 3–4: nb 06 complete + nb 07 start. Week 5–6: nb 07 carbon optimisation.
 
 ---
 
