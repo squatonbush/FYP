@@ -1,6 +1,6 @@
 # Thesis Reference Library
 
-> **Student:** Cheuk Fung Donald Man · **Module:** MEng Individual Research Project · **Supervisor:** Dr. Po-Heng Lee · **Thesis title:** *A Data-Driven Predictive Control Framework for HVAC Cooling Optimisation in Commercial Office Buildings* (scope pivoted to climate-and-carbon emissions analysis during execution; see Chapter 1 scope note)
+> **Student:** Cheuk Fung Donald Man · **Module:** MEng Individual Research Project · **Supervisor:** Dr. Po-Heng Lee · **Thesis title:** *Data-Driven Analysis of HVAC Decarbonisation Pathways in Commercial Office Buildings Under Climate Change*
 
 This file is the canonical bibliography for the thesis. Every numeric or qualitative claim in a notebook markdown cell or thesis chapter draft cites a **short-key** from this file (e.g. `[IPCC_AR6_Ch9]`). New sources are added here *in the same commit* as the work that uses them.
 

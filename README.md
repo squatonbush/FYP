@@ -1,5 +1,5 @@
-# HVAC Cooling Optimisation — MEng Final Year Project
-**A Data-Driven Predictive Control Framework for HVAC Cooling Optimisation in Commercial Office Buildings**
+# HVAC Decarbonisation — MEng Final Year Project
+**Data-Driven Analysis of HVAC Decarbonisation Pathways in Commercial Office Buildings Under Climate Change**
 
 Cheuk Fung Donald Man | Imperial College London | MEng Civil Engineering
 Supervised by Dr. Po-Heng Lee

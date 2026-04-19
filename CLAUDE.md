@@ -6,7 +6,7 @@
 
 ## Project Identity
 
-- **Title:** A Data-Driven Predictive Control Framework for HVAC Cooling Optimisation in Commercial Office Buildings
+- **Title:** Data-Driven Analysis of HVAC Decarbonisation Pathways in Commercial Office Buildings Under Climate Change
 - **Note on scope (pivoted 2026-04-18):** The thesis title was set at proposal stage referencing cooling-control optimisation. During execution the scope pivoted from control-framework design to a **three-lever climate-and-carbon emissions analysis**: (i) climate-change contribution to HVAC demand via 18-year AMY data, (ii) retrofit marginal-abatement-cost curve across ASHRAE efficiency levels, (iii) grid-aware carbon-optimal scheduling using thermal-mass flexibility overlaid with NREL Cambium hourly grid carbon. The MPC exploration is retained as archived material at `notebooks/05_mpc_archive.ipynb` and is referenced in the Chapter 8 Limitations section; the research contribution is the three-lever analysis. Literature gap justification: Péan et al (2019) *J. Process Control* identify carbon-signal objectives as under-served in HVAC control — see `[Pean2019]` in `docs/references.md`.
 - **Student:** Cheuk Fung Donald Man
 - **Programme:** MEng Civil Engineering, Imperial College London
