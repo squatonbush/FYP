@@ -280,7 +280,15 @@ Pre-pivot chapter plan (MPC framework + RL) is superseded. All reference numbers
   - Cambium workbook committed to `data/external/cambium/`; eGRID XLSX at `data/external/egrid/`.
   - Verified LRMER means: FRCC=254.9, CAISO=92.7, PJM_West=167.0 kg CO₂e/MWh (all pass smoke tests). LRMER is the long-run *marginal* rate — substantially lower than eGRID average because marginal generator increasingly reflects renewables; eGRID average used for flat-rate baseline, LRMER used for TOU-weighted accounting.
   - **Run all cells in VS Code** — all data is now local, no downloads needed on re-run.
-- [ ] `07_carbon_optimisation.ipynb` — new notebook (O5, O6): flexibility envelope (from salvaged RC model), carbon-optimal scheduling, retrofit MACC, scenario comparison, carbon-price sensitivity.
+- [x] `07_carbon_optimisation.ipynb` — **WRITTEN (2026-04-21)**. All 7 sections implemented (24 cells). Ready to execute in VS Code. Key design decisions:
+  - Section 2: RC flexibility envelope — DT_PRECOOL=1°C, 2-hour window (05:00–06:00), thermal-mass binding for all three zones. Daily shift budgets: 1A=72.8 kWh, 3C=227.3 kWh, 5A=297.4 kWh (thermal limit; capacity limit not reached).
+  - Section 3: Rule-based scheduling — SHIFT_FRACTION=0.30, LRMER_PERCENTILE=75 monthly threshold, vectorised LRMER join from `grid_profiles.parquet`; smoke tests assert Δ LRMER > 0 (shift always reduces emissions) and shift < 35% of annual demand.
+  - Section 4: Retrofit MACC — RUNG_PAIRS=[Low→Standard, Standard→High]; annualised CAPEX via ANNUITY_FACTOR(r=0.035, n=25); energy savings at £250/MWh; net MAC displayed vs 4 carbon-price thresholds (ETS 2026, SCC, GB 2022, GB 2050).
+  - Section 5: Scenario comparison — 4 scenarios (Baseline Std, Retrofit High, Schedule Std, Combined High+S) per climate; % reduction annotated on bar chart.
+  - Section 6: Carbon-price sensitivity sweep £0–£450 in £5 steps; breakeven prices printed per rung; fill_between shading shows cost-effective region.
+  - Section 7: Saves `scheduling_results.parquet` (9 rows), `macc_table.csv` (24 rows = 6 rungs × 4 price scenarios), `scenario_comparison.json`; read-back assertions confirm row counts.
+  - **Outputs:** figures `07_flexibility_envelope.png`, `07_shift_per_climate.png`, `07_macc_per_climate.png`, `07_scenario_comparison.png`, `07_carbon_price_sensitivity.png`.
+  - **Run all cells in VS Code** — requires `emissions_baseline.parquet`, `grid_profiles.parquet`, `emissions_summary.json` from nb 06.
 - [ ] Thesis write-up.
 
 **Timeline.** ~6 weeks to thesis (current date 2026-04-19; target late May / early June 2026). Week 1 done: config + CLAUDE.md + nb 01 AMY extension + nb 05 written. Week 2: execute nb 05 + nb 06 grid carbon. Week 3–4: nb 06 complete + nb 07 start. Week 5–6: nb 07 carbon optimisation.
