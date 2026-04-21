@@ -273,7 +273,13 @@ Pre-pivot chapter plan (MPC framework + RL) is superseded. All reference numbers
   - Section 5: Linear trend regression of annual HVAC on year; early indication of weak trends (high p-values) — climate variability dominates over monotonic trend in 6-AMY-year window.
   - Section 6: Saves `data/processed/climate_sensitivity.json`; figures `05_cdd_hdd_trends.png`, `05_climate_sensitivity.png`, `05_warming_counterfactual.png`, `05_annual_hvac_trajectory.png`.
   - **Note:** `statsmodels` not in original `requirements.txt` — install via `pip install statsmodels` (done in venv).
-- [x] `06_grid_carbon.ipynb` — **WRITTEN (2026-04-20)**. 18 cells, nbformat 4.5, all `"nb06-xxx"` cell IDs. Sections: (1) eGRID + Cambium ingestion with multi-tier fallback (cache → XLSX download → synthetic profile), (2) climate-to-grid mapping bar chart, (3) hourly LRMER heatmap + seasonal diurnal lines, (4) emissions matrix (TOU vs flat, TOU leverage heatmap), (5) peak-coincidence dual-axis figure + CF/r metrics, (6) saves `emissions_baseline.parquet`, `grid_profiles.parquet`, `emissions_summary.json`. **Execute in VS Code to produce output files** — external data dirs (`data/external/egrid/`, `data/external/cambium/`) are empty; Section 1 will download on first run (eGRID XLSX ~25 MB, Cambium XLSX variable); synthetic fallback activates automatically if downloads fail. openpyxl 3.1.5 confirmed installed in venv.
+- [x] `06_grid_carbon.ipynb` — **DEBUGGED & READY TO EXECUTE (2026-04-21)**. Key fixes applied:
+  - eGRID 2022: sheet name is `SRL22` (not `SUBR22`); CO2e column is `SRC2ERTA` (not `SRCO2ERTA`). Actual values: FRCC=0.371, CAMX=0.226, RFCW=0.456 kg CO₂e/kWh.
+  - Cambium LRMER: no public direct-download URL for hourly CSVs exists. Instead, `Cambium23_LRMER_GEAregions_0.xlsx` (17.4 MB) is downloaded from NLR Data Catalog (submission 230) and parsed from the `Data - Month-hour` sheet (288-row 12×24 combustion CO₂e profile per GEA region). GEA region mapping: FRCC→FRCC, CAMX→CAISO, p20→PJM_West.
+  - Python 3.9 annotation fix: `pd.DataFrame | None` → bare signature (union type requires 3.10+).
+  - Cambium workbook committed to `data/external/cambium/`; eGRID XLSX at `data/external/egrid/`.
+  - Verified LRMER means: FRCC=254.9, CAISO=92.7, PJM_West=167.0 kg CO₂e/MWh (all pass smoke tests). LRMER is the long-run *marginal* rate — substantially lower than eGRID average because marginal generator increasingly reflects renewables; eGRID average used for flat-rate baseline, LRMER used for TOU-weighted accounting.
+  - **Run all cells in VS Code** — all data is now local, no downloads needed on re-run.
 - [ ] `07_carbon_optimisation.ipynb` — new notebook (O5, O6): flexibility envelope (from salvaged RC model), carbon-optimal scheduling, retrofit MACC, scenario comparison, carbon-price sensitivity.
 - [ ] Thesis write-up.
 
